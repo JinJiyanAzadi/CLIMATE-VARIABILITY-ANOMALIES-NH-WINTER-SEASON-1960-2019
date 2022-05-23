@@ -1,0 +1,552 @@
+
+# ERA5 Z200_1960-2019
+
+
+import os
+import math
+import numpy as np
+
+import scipy.linalg as sc
+import scipy.special as sp
+import scipy.interpolate as spint
+import scipy.signal as sig
+import scipy.spatial.qhull as qhull
+
+import numpy.linalg as lin
+import xarray as xr
+import pandas as pd
+
+import scipy.ndimage as ndimage
+
+import zapata.lib as lib
+import zapata.data as era
+import klus.kernels as ker
+
+from geocat.viz import cmaps as gvcmaps
+from geocat.viz import util as gvutil
+
+import cartopy.crs as car
+import cartopy.util as utl
+import cartopy.mpl.ticker as ctick
+import cartopy.feature as cfeature
+from cartopy.mpl.ticker import (LongitudeFormatter, LatitudeFormatter)
+
+import mpl_toolkits.axes_grid1 as tl
+import matplotlib.pyplot as plt
+import zapata.computation as zcom
+import zapata.mapping as zmap
+
+
+import math as mp
+from operator import is_
+import sys
+import cartopy.crs as car
+import cartopy.util as utl
+
+from scipy import integrate
+import numpy as np
+
+import matplotlib.ticker as mticker
+import matplotlib.pyplot as plt 
+import matplotlib.path as mpath
+
+# Set tight bounding box
+plt.rcParams["savefig.bbox"] = 'tight'
+# Set True Type Fonts
+#plt.rcParams['pdf.fonttype'] = 42
+#plt.rcParams['ps.fonttype'] = 42
+
+import numpy as np
+import xarray as xr
+
+import cartopy.mpl.ticker as ctick
+import cartopy.feature as cfeature
+from cartopy.mpl.ticker import (LongitudeFormatter, LatitudeFormatter)
+import zapata.data as era
+import zapata.computation as zcom
+import zapata.lib as zlib
+
+import mpl_toolkits.axes_grid1 as tl
+
+# import geocat.datafiles as gdf
+# from geocat.viz import cmaps as gvcmaps
+import geocat.viz.util as gvutil
+
+import docrep
+# Uses DOCREP for avoiding copying docstring, contrary to the docs delete works
+# only on one param at the time.
+
+d = docrep.DocstringProcessor()
+
+
+
+%matplotlib inline
+%load_ext autoreload
+%autoreload 2
+
+## Redefining the dataset
+
+dset1 = xr.open_dataset('C:/Users/Norma/Desktop/ERA5/ERA5_1950_1978_200mb.nc')
+dset2 = xr.open_dataset('C:/Users/Norma/Desktop/ERA5/ERA5_1979_2020_200mb.nc')
+dsetFull= xr.combine_by_coords(data_objects=[dset1, dset2], combine_attrs='override')
+dsTot= dsetFull.rename({'longitude' : 'lon', 'latitude' : 'lat'})
+
+zs = zmap.adjust_data_centlon(dsTot.z, centlon_old=180.0, centlon_new=0) # Adjust xarray to a different central longitude
+zs_DJF = zs.isel(time=(zs.time.dt.season == 'DJF')) # select DJF only
+
+## Computing the math matrix on the total ds
+Z = zcom.Xmat(zs_DJF, dims = ('lat', 'lon'))
+
+Z.detrend
+
+Z.anom(option= 'anom')
+Z.anom
+
+## Creating sub-matrices based on the time slice  - then compute the SVDs in the time blocks
+Z1t = Z.A.sel(time=slice('1960', '1979'))
+
+Z1 = zcom.Xmat(Z1t.unstack(), dims =('lat', 'lon'))
+
+## Compute the EOF and then the SVD
+eof_Z1 = Z1.svd(N=10)
+
+vareof_Z1 = eof_Z1.Varex
+
+
+Crop1t_m1 = eof_Z1.Pattern.isel(Modes=0).unstack().sel(lat=slice(90,20)) # to crop the data as per slice coordinates
+Crop1t_m2 = eof_Z1.Pattern.isel(Modes=1).unstack().sel(lat=slice(90,20))
+Crop1t_m3 = eof_Z1.Pattern.isel(Modes=2).unstack().sel(lat=slice(90,20))
+Crop1t_m4 = eof_Z1.Pattern.isel(Modes=3).unstack().sel(lat=slice(90,20))
+
+
+#To Plot
+
+fig, ax, pro = zmap.init_figure(2,2,'NHStereoAmerica',constrained_layout=True, figsize=(20,16))
+plt.suptitle('ERA5_Z200_1960-1979_DJF_Detr & Anom', fontsize=20)
+zmap.xsmap(Crop1t_m1, 
+           [],pro, 
+           ax = ax[0,0], 
+           contour=True, 
+           refline=None, 
+           Special_Value=9999.0, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode1   ', 
+           righttitle='Var 23%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray', 
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop1t_m2,
+           [],pro, 
+           ax = ax[0,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode2   ', 
+           righttitle='Var 18%', 
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop1t_m3,
+           [],pro,
+           ax = ax[1,0], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode3  ', 
+           righttitle='Var 8%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop1t_m4,
+           [],pro, 
+           ax = ax[1,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode4  ', 
+           righttitle='Var 7%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+plt.savefig('ERA5_Z200_1960-1979_DJF_Stereo_Modes_1-4_Detr_Anom.pdf')
+
+
+# To plot with Contouring
+
+fig, ax, pro = zmap.init_figure(2,2,'NHStereoAmerica',constrained_layout=True, figsize=(20,16))
+plt.suptitle('ERA5_Z200_1960-1979_DJF_Detr & Anom', fontsize=20)
+zmap.xsmap(Crop1t_m1, 
+           [-0.0040,0.0040, 0.0010],pro, 
+           ax = ax[0,0], 
+           contour=True, 
+           refline=None, 
+           Special_Value=9999.0, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode1   ', 
+           righttitle='Var 23%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray', 
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop1t_m2,
+           [-0.0040,0.0040, 0.0010],pro, 
+           ax = ax[0,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode2   ', 
+           righttitle='Var 18%', 
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop1t_m3,
+           [-0.0040,0.0040, 0.0010],pro,
+           ax = ax[1,0], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode3  ', 
+           righttitle='Var 8%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop1t_m4,
+           [-0.0040,0.0040, 0.0010],pro, 
+           ax = ax[1,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode4  ', 
+           righttitle='Var 7%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+plt.savefig('ERA5_Z200_1960-1979_DJF_Stereo_Modes_1-4_Detr_Anom_Count.pdf')
+
+
+## Block two 1980-1999
+Z2t = Z.A.sel(time=slice('1980', '1999'))
+
+Z2 = zcom.Xmat(Z2t.unstack(), dims =('lat', 'lon'))
+
+eof_Z2 = Z2.svd(N=10)
+vareof_Z2 = eof_Z2.Varex
+
+Crop2t_m1 = eof_Z2.Pattern.isel(Modes=0).unstack().sel(lat=slice(90,20)) # to crop the data as per slice coordinates
+Crop2t_m2 = eof_Z2.Pattern.isel(Modes=1).unstack().sel(lat=slice(90,20))
+Crop2t_m3 = eof_Z2.Pattern.isel(Modes=2).unstack().sel(lat=slice(90,20))
+Crop2t_m4 = eof_Z2.Pattern.isel(Modes=3).unstack().sel(lat=slice(90,20))
+
+
+
+fig, ax, pro = zmap.init_figure(2,2,'NHStereoAmerica',constrained_layout=True, figsize=(20,16))
+plt.suptitle('ERA5 1980-1999_DJF_Detr & Anom', fontsize=20)
+zmap.xsmap(Crop2t_m1, 
+           [],pro, 
+           ax = ax[0,0], 
+           contour=True, 
+           refline=None, 
+           Special_Value=9999.0, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode1   ', 
+           righttitle='Var 23%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray', 
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop2t_m2,
+           [],pro, 
+           ax = ax[0,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode2   ', 
+           righttitle='Var 14%', 
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop2t_m3,
+           [],pro,
+           ax = ax[1,0], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode3  ', 
+           righttitle='Var 10%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop2t_m4,
+           [],pro, 
+           ax = ax[1,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode4  ', 
+           righttitle='Var 7%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+plt.savefig('ERA_Z200_1980-1999_DJF_Stereo_Modes_1-4_Detr_Anom.pdf')
+
+
+# Plot with contouring
+
+fig, ax, pro = zmap.init_figure(2,2,'NHStereoAmerica',constrained_layout=True, figsize=(20,16))
+plt.suptitle('ERA5 1980-1999_DJF_Detr & Anom', fontsize=20)
+zmap.xsmap(Crop2t_m1, 
+           [-0.0040,0.0040, 0.0010],pro, 
+           ax = ax[0,0], 
+           contour=True, 
+           refline=None, 
+           Special_Value=9999.0, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode1   ', 
+           righttitle='Var 23%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray', 
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop2t_m2,
+           [-0.0040,0.0040, 0.0010],pro, 
+           ax = ax[0,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode2   ', 
+           righttitle='Var 14%', 
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop2t_m3,
+           [-0.0040,0.0040, 0.0010],pro,
+           ax = ax[1,0], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode3  ', 
+           righttitle='Var 10%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop2t_m4,
+           [-0.0040,0.0040, 0.0010],pro, 
+           ax = ax[1,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode4  ', 
+           righttitle='Var 7%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+plt.savefig('ERA_Z200_1980-1999_DJF_Stereo_Modes_1-4_Detr_Anom_Count.pdf')
+
+
+
+## Block two 2000- 2019
+Z3t = Z.A.sel(time=slice('2000', '2019'))
+
+Z3 = zcom.Xmat(Z3t.unstack(), dims =('lat', 'lon'))
+
+eof_Z3 = Z3.svd(N=10)
+
+vareof_Z3 = eof_Z3.Varex
+
+Crop3t_m1 = eof_Z3.Pattern.isel(Modes=0).unstack().sel(lat=slice(90,20)) # to crop the data as per slice coordinates
+Crop3t_m2 = eof_Z3.Pattern.isel(Modes=1).unstack().sel(lat=slice(90,20))
+Crop3t_m3 = eof_Z3.Pattern.isel(Modes=2).unstack().sel(lat=slice(90,20))
+Crop3t_m4 = eof_Z3.Pattern.isel(Modes=3).unstack().sel(lat=slice(90,20))
+
+fig, ax, pro = zmap.init_figure(2,2,'NHStereoAmerica',constrained_layout=True, figsize=(20,16))
+plt.suptitle('ERA5 2000-2019_DJF_Detr & Anom', fontsize=20)
+zmap.xsmap(Crop3t_m1, 
+           [],pro, 
+           ax = ax[0,0], 
+           contour=True, 
+           refline=None, 
+           Special_Value=9999.0, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode1   ', 
+           righttitle='Var 24%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray', 
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop3t_m2,
+           [],pro, 
+           ax = ax[0,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode2   ', 
+           righttitle='Var 16%', 
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop3t_m3,
+           [],pro,
+           ax = ax[1,0], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode3  ', 
+           righttitle='Var 8%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop3t_m4,
+           [],pro, 
+           ax = ax[1,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode4  ', 
+           righttitle='Var 8%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+plt.savefig('ERA_Z200_2000-2019_DJF_Stereo_Modes_1-4_Detr_Anom.pdf')
+
+# To plot with contouring
+
+fig, ax, pro = zmap.init_figure(2,2,'NHStereoAmerica',constrained_layout=True, figsize=(20,16))
+plt.suptitle('ERA5 2000-2019_DJF_Detr & Anom', fontsize=20)
+zmap.xsmap(Crop3t_m1, 
+           [-0.0040,0.0040, 0.0010],pro, 
+           ax = ax[0,0], 
+           contour=True, 
+           refline=None, 
+           Special_Value=9999.0, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode1   ', 
+           righttitle='Var 24%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray', 
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop3t_m2,
+           [-0.0040,0.0040, 0.0010],pro, 
+           ax = ax[0,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode2   ', 
+           righttitle='Var 16%', 
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop3t_m3,
+           [-0.0040,0.0040, 0.0010],pro,
+           ax = ax[1,0], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode3  ', 
+           righttitle='Var 8%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+zmap.xsmap(Crop3t_m4,
+           [-0.0040,0.0040, 0.0010],pro, 
+           ax = ax[1,1], 
+           contour=True, 
+           refline=None, 
+           clabel=False, 
+           c_format='{:6.0f}', 
+           lefttitle='Z200', 
+           maintitle='Mode4  ', 
+           righttitle='Var 8%',
+           colorbar=True, 
+           cmap='coolwarm', 
+           coasts=True, color_land='lightgray',
+           Top_label=True, 
+           Lat_labels=False)
+plt.savefig('ERA_Z200_2000-2019_DJF_Stereo_Modes_1-4_Detr_Anom_Count.pdf')
